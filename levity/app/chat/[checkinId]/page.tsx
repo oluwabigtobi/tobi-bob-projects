@@ -21,7 +21,7 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
   const [streamBuffer, setStreamBuffer] = useState('')
   const [done, setDone] = useState(false)
   const [initialized, setInitialized] = useState(false)
-  const [scoring, setScoring] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   useEffect(() => {
     if (initCalledRef.current) return
@@ -73,27 +73,24 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
       const payload = await res.json()
 
       if (payload.error) {
-        console.error('Chat error:', payload.error)
+        setErrorMsg(`Error: ${payload.error}`)
         setStreaming(false)
         return
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content: payload.text }])
-      setStreamBuffer('')
       setStreaming(false)
 
       if (payload.isComplete) {
         setDone(true)
-        setScoring(true)
         await fetch('/api/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ checkinId: activeCheckin.id }),
         })
-        setScoring(false)
       }
     } catch (err) {
-      console.error('Chat fetch error:', err)
+      setErrorMsg(`Failed: ${String(err)}`)
       setStreaming(false)
     }
   }
@@ -169,6 +166,10 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
               </div>
             </div>
           </div>
+        )}
+
+        {errorMsg && (
+          <div className="text-center text-xs text-red-500 bg-red-50 rounded-xl px-4 py-3">{errorMsg}</div>
         )}
 
         <div ref={bottomRef} />
