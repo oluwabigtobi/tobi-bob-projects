@@ -46,6 +46,10 @@ export async function POST(request: NextRequest) {
     ? [...transcript, { role: 'user' as const, content: message }]
     : transcript
 
+  const apiMessages = updatedTranscript.length > 0
+    ? updatedTranscript.map(m => ({ role: m.role, content: m.content }))
+    : [{ role: 'user' as const, content: '[Start the check-in conversation]' }]
+
   await supabase()
     .from('checkins')
     .update({ conversation_transcript: updatedTranscript })
@@ -61,13 +65,10 @@ export async function POST(request: NextRequest) {
 
       try {
         const claudeStream = await anthropic.messages.stream({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 1024,
           system: systemPrompt,
-          messages: updatedTranscript.map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
+          messages: apiMessages,
         })
 
         for await (const chunk of claudeStream) {
