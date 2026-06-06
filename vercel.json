@@ -4,11 +4,5 @@
       "src": "levity/package.json",
       "use": "@vercel/next"
     }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "levity/$1"
-    }
   ]
 }
