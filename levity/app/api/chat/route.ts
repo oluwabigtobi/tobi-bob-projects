@@ -6,8 +6,6 @@ import { supabase } from '@/lib/supabase'
 import { buildSystemPrompt } from '@/lib/prompts'
 import type { Message, Checkin, Founder } from '@/lib/supabase'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
 type CheckinWithFounder = Checkin & { founders: Founder }
 
 export async function POST(request: NextRequest) {
@@ -60,6 +58,7 @@ export async function POST(request: NextRequest) {
   const systemPrompt = buildSystemPrompt(founder, checkin.week_number, lastCheckin)
 
   try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
