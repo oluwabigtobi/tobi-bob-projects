@@ -63,56 +63,38 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
     setStreaming(true)
     setStreamBuffer('')
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ checkinId: activeCheckin.id, message: userMessage }),
-    })
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkinId: activeCheckin.id, message: userMessage }),
+      })
 
-    if (!res.body) { setStreaming(false); return }
+      const payload = await res.json()
 
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    let fullText = ''
-
-    while (true) {
-      const { done: streamDone, value } = await reader.read()
-      if (streamDone) break
-
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        try {
-          const payload = JSON.parse(line.slice(6))
-          if (payload.text) {
-            fullText += payload.text
-            setStreamBuffer(fullText)
-          }
-          if (payload.done) {
-            const cleanText = fullText.replace('[CONVERSATION_COMPLETE]', '').trim()
-            setMessages(prev => [...prev, { role: 'assistant', content: cleanText }])
-            setStreamBuffer('')
-            setStreaming(false)
-
-            if (payload.isComplete) {
-              setDone(true)
-              setScoring(true)
-              await fetch('/api/complete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ checkinId: activeCheckin.id }),
-              })
-              setScoring(false)
-            }
-          }
-        } catch {
-          // skip malformed SSE lines
-        }
+      if (payload.error) {
+        console.error('Chat error:', payload.error)
+        setStreaming(false)
+        return
       }
+
+      setMessages(prev => [...prev, { role: 'assistant', content: payload.text }])
+      setStreamBuffer('')
+      setStreaming(false)
+
+      if (payload.isComplete) {
+        setDone(true)
+        setScoring(true)
+        await fetch('/api/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ checkinId: activeCheckin.id }),
+        })
+        setScoring(false)
+      }
+    } catch (err) {
+      console.error('Chat fetch error:', err)
+      setStreaming(false)
     }
   }
 
@@ -176,11 +158,7 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
           <ChatBubble key={i} role={msg.role} content={msg.content} founderName={founder?.short_name} />
         ))}
 
-        {streamBuffer && (
-          <ChatBubble role="assistant" content={streamBuffer} founderName={founder?.short_name} />
-        )}
-
-        {streaming && !streamBuffer && (
+        {streaming && (
           <div className="flex gap-3">
             <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">L</div>
             <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">

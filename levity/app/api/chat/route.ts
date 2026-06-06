@@ -1,6 +1,6 @@
 export const maxDuration = 60
 
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { supabase } from '@/lib/supabase'
 import { buildSystemPrompt } from '@/lib/prompts'
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   const { checkinId, message } = await request.json()
 
   if (!checkinId) {
-    return new Response('checkinId required', { status: 400 })
+    return NextResponse.json({ error: 'checkinId required' }, { status: 400 })
   }
 
   const { data, error: checkinErr } = await supabase()
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (checkinErr || !data) {
-    return new Response('Checkin not found', { status: 404 })
+    return NextResponse.json({ error: 'Checkin not found' }, { status: 404 })
   }
 
   const checkin = data as CheckinWithFounder
@@ -59,59 +59,30 @@ export async function POST(request: NextRequest) {
 
   const systemPrompt = buildSystemPrompt(founder, checkin.week_number, lastCheckin)
 
-  const encoder = new TextEncoder()
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: apiMessages,
+    })
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      let fullResponse = ''
+    const fullResponse = response.content[0].type === 'text' ? response.content[0].text : ''
+    const isComplete = fullResponse.includes('[CONVERSATION_COMPLETE]')
+    const cleanResponse = fullResponse.replace('[CONVERSATION_COMPLETE]', '').trim()
 
-      try {
-        const claudeStream = await anthropic.messages.stream({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1024,
-          system: systemPrompt,
-          messages: apiMessages,
-        })
+    const finalTranscript: Message[] = [
+      ...updatedTranscript,
+      { role: 'assistant' as const, content: cleanResponse },
+    ]
 
-        for await (const chunk of claudeStream) {
-          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-            const text = chunk.delta.text
-            fullResponse += text
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))
-          }
-        }
+    const updates: Record<string, unknown> = { conversation_transcript: finalTranscript }
+    if (isComplete) updates.status = 'completed'
 
-        const isComplete = fullResponse.includes('[CONVERSATION_COMPLETE]')
-        const cleanResponse = fullResponse.replace('[CONVERSATION_COMPLETE]', '').trim()
+    await supabase().from('checkins').update(updates).eq('id', checkinId)
 
-        const finalTranscript: Message[] = [
-          ...updatedTranscript,
-          { role: 'assistant' as const, content: cleanResponse },
-        ]
-
-        const updates: Record<string, unknown> = { conversation_transcript: finalTranscript }
-        if (isComplete) updates.status = 'completed'
-
-        await supabase().from('checkins').update(updates).eq('id', checkinId)
-
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ done: true, isComplete })}\n\n`)
-        )
-      } catch (err) {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ error: String(err) })}\n\n`)
-        )
-      } finally {
-        controller.close()
-      }
-    },
-  })
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  })
+    return NextResponse.json({ text: cleanResponse, isComplete })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
 }
