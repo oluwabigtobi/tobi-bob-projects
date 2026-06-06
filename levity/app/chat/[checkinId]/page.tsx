@@ -18,7 +18,6 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
-  const [streamBuffer, setStreamBuffer] = useState('')
   const [done, setDone] = useState(false)
   const [initialized, setInitialized] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -53,7 +52,7 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamBuffer])
+  }, [messages])
 
   async function runStream(
     activeCheckin: FullCheckin,
@@ -61,7 +60,6 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
     userMessage?: string
   ) {
     setStreaming(true)
-    setStreamBuffer('')
 
     try {
       const res = await fetch('/api/chat', {
@@ -132,7 +130,7 @@ export default function ChatPage({ params }: { params: Promise<{ checkinId: stri
         </div>
         {done && (
           <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-medium">
-            {scoring ? 'Saving…' : 'Complete'}
+            Complete
           </span>
         )}
       </header>
